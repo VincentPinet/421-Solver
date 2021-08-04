@@ -64,7 +64,7 @@ list<int> outcomes(int r = 0, int a = 0b111) {
 			}
 		}
 	}
-	transform(res.begin(), res.end(), res.begin(), &canonicalize);
+	transform(res.begin(), res.end(), res.begin(), (int (*)(int))&canonicalize);
 	return res;
 }
 
@@ -83,13 +83,13 @@ float eval(int a, int b) {
 
 void compute_f() {
 	for (int r : ranking)
-		f[r][N_ROLL - 1].val = ev(outcomes(), [r] (float sum, float xi) { return sum + g[r][xi][N_ROLL - 1].val; });
+		f[r][N_ROLL - 1].val = ev(outcomes(), [r] (float sum, int xi) { return sum + g[r][xi][N_ROLL - 1].val; });
 
 	for (int t = 1; t >= 0; t--) {
 		for (int r : ranking) {
-			entry max = { ev(outcomes(), [r, t] (float sum, float xi) { return sum + g[r][xi][t].val; }) };
+			entry max = { ev(outcomes(), [r, t] (float sum, int xi) { return sum + g[r][xi][t].val; }) };
 			for (int a = 0b001; a <= 0b111; a++)
-				update(max, {ev(outcomes(r, a), [t] (float sum, float xi) { return sum + f[xi][t+1].val; }), a}, greater<float>());
+				update(max, {ev(outcomes(r, a), [t] (float sum, int xi) { return sum + f[xi][t+1].val; }), a}, greater<float>());
 			f[r][t] = max;
 		}
 	}
@@ -105,7 +105,7 @@ void compute_g() {
 			for (int r2 : ranking) {
 				entry min = {eval(r1, r2)};
 				for (int a = 0b001; a <= 0b111; a++)
-					update(min, {ev(outcomes(r2, a), [r1, t] (float sum, float xi) { return sum + g[r1][xi][t-1].val; }), a}, less<float>());
+					update(min, {ev(outcomes(r2, a), [r1, t] (float sum, int xi) { return sum + g[r1][xi][t-1].val; }), a}, less<float>());
 				g[r1][r2][t] = min;
 			}
 		}
@@ -120,15 +120,15 @@ string action_to_string(int r, int a) {
 	return res;
 }
 
-uniform_int_distribution<int> die(1,6);
-default_random_engine roll;
+random_device rd;
+mt19937 roll(rd());
+uniform_int_distribution<int> die(1, 6);
 
 int apply_action(int r, int a) {
-	int res;
 	for (int i  = 0; i < N_DICE; i++)
 		if ((a >> i) & 1)
-			res = replace(r, i, die(roll));
-	return canonicalize(res);
+			r = replace(r, i, die(roll));
+	return canonicalize(r);
 }
 
 float sim() {
