@@ -26,9 +26,11 @@ Let **A** be the set of all actions one player can take (for each dice wether or
 
 ## Results
 
-Table representation of **f**.  
 For an overall weighted winrate of `60.0044%` for the starting player.  
+
+Table representation of **f**.  
 Action column denotes the optimal strategy by showing which dice to keep.  
+(For the second player, **g** results are available under [results folder](https://github.com/VincentPinet/421-Solver/tree/master/results/) with the facing roll as file name)
 
 <table>
 	<tr>
@@ -38,11 +40,11 @@ Action column denotes the optimal strategy by showing which dice to keep.
 		<td colspan="2"><b>2</td>
 	</tr>
 	<tr>
-		<td>odds</td>
+		<td>win%</td>
 		<td>action</td>
-		<td>odds</td>
+		<td>win%</td>
 		<td>action</td>
-		<td>odds</td>
+		<td>win%</td>
 		<td>action</td>
 	</tr>
 	</tr>
