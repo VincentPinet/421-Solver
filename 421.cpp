@@ -1,10 +1,9 @@
-#include <fmt/core.h>
-
 #include <array>
 #include <functional>
 #include <iostream>
 #include <list>
 #include <numeric>
+#include <print>
 #include <random>
 #include <unordered_map>
 
@@ -152,14 +151,14 @@ string to_string(int r, int a) {
 }
 
 void print_ans(unordered_map<int, unordered_map<int, entry>>& ans) {
-    fmt::print("{:^{}} |", "r\\t", N_DICE);
+    std::print("{:^{}} |", "r\\t", N_DICE);
     for (int i = 0; i < N_ROLL; i++)
-        fmt::print("{:^14}|", i);
+        std::print("{:^14}|", i);
     cout << endl;
     for (int r2 : ranking) {
         cout << r2 << " |";
         for (int t = 0; t < N_ROLL; t++) {
-            fmt::print("{:6.2f}% ({:>3}) |", ans[r2][t].val * 100, to_string(r2, ans[r2][t].action));
+            std::print("{:6.2f}% ({:>3}) |", ans[r2][t].val * 100, to_string(r2, ans[r2][t].action));
         }
         cout << endl;
     }
