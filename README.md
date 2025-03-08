@@ -16,13 +16,21 @@ Let **f(r<sub>1</sub>, t)** be the winning odds with current combination **r<sub
 
 Let **A** be the set of all actions one player can take (for each dice wether or not it gets rerolled).  
 
-![](https://latex.codecogs.com/svg.latex?g(r_1,r_2,0)=eval(r_1,r_2))  
+$$
+g(r_1,r_2,0)=eval(r_1,r_2)
+$$
 
-![](https://latex.codecogs.com/svg.latex?g(r_1,r_2,t)=\min_{a}^{A}\mathbb{E}[g(f,X_{r_2a},t-1)])  
+$$
+g(r_1,r_2,t)=\min_{a}^{A}\mathbb{E}[g(f,X_{r_2a},t-1)]
+$$
 
-![](https://latex.codecogs.com/svg.latex?f(r_1,2)=\mathbb{E}[g(r_1,X_{},2)])  
+$$
+f(r_1,2)=\mathbb{E}[g(r_1,X_{},2)]
+$$
 
-![](https://latex.codecogs.com/svg.latex?f(r_1,t)=\max\begin{cases}\mathbb{E}[g(r_1,X_{},t)]\\\max_{a}^{A}\mathbb{E}[f(X_{r_1a},t&plus;1)]\end{cases})  
+$$
+f(r_1,t)=\max\begin{cases}\mathbb{E}[g(r_1,X_{},t)]\\\max_{a}^{A}\mathbb{E}[f(X_{r_1a},t+1)]\end{cases}
+$$
 
 ## Results
 
