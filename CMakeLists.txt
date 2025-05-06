@@ -1,14 +1,32 @@
-cmake_minimum_required(VERSION 3.13)
-project(421-Solver VERSION 0.1.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.25)
 
-add_executable(main 421.cpp)
-set_target_properties(main PROPERTIES CXX_STANDARD 23)
+# had to go with a french name for this one
+project(solveur-quatre-cent-vingt-et-un VERSION 0.2.0 LANGUAGES CXX)
 
-if(MSVC)
-  target_compile_options(main PRIVATE /Wall /W4 /WX)
-  if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_options(main PRIVATE /O2)
-  endif()
-else()
-  target_compile_options(main PRIVATE -O3 -Wall -Wextra -Wpedantic -Werror)
-endif()
+add_executable(main main.cpp)
+target_compile_features(main PRIVATE cxx_std_26)
+target_compile_options(main PRIVATE
+    -Wall
+    -Wcast-align
+    -Wconversion
+    -Wdouble-promotion
+    -Wduplicated-branches
+    -Wduplicated-cond
+    -Werror
+    -Wextra
+    -Wformat=2
+    -Wimplicit-fallthrough
+    -Wlogical-op
+    -Wmisleading-indentation
+    -Wno-coverage-invalid-line-number
+    -Wnon-virtual-dtor
+    -Wnull-dereference
+    -Wold-style-cast
+    -Woverloaded-virtual
+    -Wpedantic
+    -Wshadow
+    # -Wsign-conversion # this one is dumb sometimes
+    -Wsuggest-override
+    -Wunused
+    -Wuseless-cast
+)
