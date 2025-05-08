@@ -1,554 +1,196 @@
-# 421-Solver
+# 421-solver
 
-Solving [421 game](https://fr.wikipedia.org/wiki/421_(jeu)) one chip heads-up variant with minmax algorithm using Markov decision process, dynamic programming and symmetry breaking  
+## Rules
 
-## Mathematical Model
+I call this the **421 dice game 2-player 1-chip variant**.  
 
-Let **X<sub>ra</sub>** be the discrete random variable of a dice throw given optional : prior combination **r** and action **a**.  
+The game is played with 3 six-sided dice :game_die::game_die::game_die:.  
+The goal is to have the better combination.  
 
-Every function is computed from the starting player's perspective.  
+Ok, so it goes like this:
 
-Let **eval(r<sub>1</sub>, r<sub>2</sub>)** return 1 if combination **r<sub>1</sub>** has a better ranking than **r<sub>2</sub>**, 0.5 if tie and 0 otherwise.  
+- Roll the three dice :game_die::game_die::game_die: then **STOP** or *CONTINUE*
+- Keep any number of dice and reroll the rest, then **STOP** or *CONTINUE*
+- Keep any number of dice and reroll the rest, then **STOP**
 
-Let **g(r<sub>1</sub>, r<sub>2</sub>, t)** be the winning odds for a fixed combination **r<sub>1</sub>** against **r<sub>2</sub>** with **t** rerolls left to use.  
+Now, the same applies to the second-player, except they **must** stop at the same step as the first-player did. (i.e., being allowed 0, 1 or 2 rerolls)  
+At the end whoever has the better combo wins:
 
-Let **f(r<sub>1</sub>, t)** be the winning odds with current combination **r<sub>1</sub>** and **t** rerolls already done.  
+| Ranking                                                   |     |
+| :-------------------------------------------------------: | --  |
+| 421                                                       |     |
+| 111                                                       |     |
+| **6**11, **6**66, **5**11, **5**55, ..., **2**11, **2**22 | *   |
+| 654, 543, 432, 321                                        | **  |
+| 665, 664, ..., 322, 221                                   | *** |
 
-Let **A** be the set of all actions one player can take (for each dice wether or not it gets rerolled).  
+\*  pattern is (**X**11, **XXX**) repeating in decreasing order of X, with the exception of X=1 being better.  
+\*\* straight.  
+\*\*\* just highest roll.  
 
-![](https://latex.codecogs.com/svg.latex?g(r_1,r_2,0)=eval(r_1,r_2))  
+> [!NOTE]
+> I will use this canonical representation for combos:  
+> Ordering dice with bigger digit at the left ($xyz \enspace s.t. \enspace x \geq y \geq z$)
 
-![](https://latex.codecogs.com/svg.latex?g(r_1,r_2,t)=\min_{a}^{A}\mathbb{E}[g(f,X_{r_2a},t-1)])  
+## Motivation
 
-![](https://latex.codecogs.com/svg.latex?f(r_1,2)=\mathbb{E}[g(r_1,X_{},2)])  
+In my play group, we sometimes use this game as a replacement of coin-flipping when picking between two people.  
+Now, the issue is that 421 is an asymmetrical game.  
+So, it begs the question: which player is favored, the first or the second?  
 
-![](https://latex.codecogs.com/svg.latex?f(r_1,t)=\max\begin{cases}\mathbb{E}[g(r_1,X_{},t)]\\\max_{a}^{A}\mathbb{E}[f(X_{r_1a},t&plus;1)]\end{cases})  
+Intuitively, there are strong arguments for both side:  
+
+- The first-player gets to *set the rules* in a sense (the number of rerolls allowed during the game). And they do so midstep, knowing what they are currently holding.
+- The second-player is *the last to speak*, aware of exactly what they have to beat in order to win. Therefore taking risk or not accordingly.  
+
+My guess was that the second-player was advantaged. Having played a fair share of poker, my rationale was: this is the equivalent of playing in-postion, which is a massive advantage as opposed to being able set the price by donking out-of-positon..  
+<details>
+<summary>spoiler</summary>
+
+> $\Huge I \quad \Huge WAS \quad \Huge WRONG$
+
+</details>
+
+## Mathematical model
+
+Every function is seen from the **first-player's perspective**.  
+Let $u(r_1,r_2)$ be the terminal utility function for a given first-player combo $r_1$  and second-player combo $r_2$.  
+Let $A$ be the set of all legal actions. For each die whether it's kept or rerolled $|A|=2^3$.  
+Let $X_{r_ia}$ be the discrete random variable of a throw given optional action $a \in A$ applied to prior combo $r_i$.  
+Let $g(r_1,r_2,t)$ be the win rate of combo $r_2$ with $t$ **rerolls left to use** against first-player final combo $r_1$.  
+Let $f(r_1,t)$ be the win rate of combo $r_1$ with $t$ **rerolls already used**.  
+
+$`(1) \qquad g(r_1,r_2,0)=u(r_1,r_2)`$  
+
+$`(2) \qquad g(r_1,r_2,t)=\min_{a}^{A}\mathbb{E}[g(r_1,X_{r_2a},t-1)]`$  
+
+$`(3) \qquad f(r_1,2)=\mathbb{E}[g(r_1,X,2)]`$  
+
+$`(4) \qquad f(r_1,t)=\max \begin{cases} \mathbb{E}[g(r_1,X,t)] \\ max_{a}^{A}\mathbb{E}[f(X_{r_1a},t+1)] \end{cases}`$  
+
+The reward is the terminal utility function at the end of the game, which is $(1)$ second-player not having any reroll left to use.  
+When we do have some, we choose the "best" action and decrease rerolls counter $(2)$. Since it's **first-player's perspective**, "best" for second-player is minimizing.  
+The first-player must stop $(3)$ because of max reroll cap at 2 by rules.  
+The reroll counter $t$ is increased and then decreased so that $g$ and $f$ have the same amount of recursion $(4)$. It also captures the idea of whether it's worth using a reroll to impove or just passing over to the second-player.  
+
+## Visual
+
+```mermaid
+graph LR
+    BEGIN@{shape: sm-circ}                     --> |"r=🎲🎲🎲                                 "| f0
+    f0{"f(r,0)"}                               --> |"r<sub>2</sub>''=🎲🎲🎲                   "| g0
+    f1{"f(r',1)"}                              --> |"r<sub>2</sub>'=🎲🎲🎲                    "| g1
+    f2{"f(r'',2)"}                             --> |"r<sub>2</sub>=🎲🎲🎲                     "| g2
+    f0                                         --> |"r'=X<sub>ra</sub>                          "| f1
+    f1                                         --> |"r''=X<sub>r'a</sub>                        "| f2
+    g2(("g(r<sub>1</sub>,r<sub>2</sub>,2)"))   --> |"r<sub>2</sub>'=X<sub>r<sub>2</sub>a<sub>   "| g1
+    g1(("g(r<sub>1</sub>,r<sub>2</sub>',1)"))  --> |"r<sub>2</sub>''=X<sub>r<sub>2</sub>'a</sub>"| g0
+    g0(("g(r<sub>1</sub>,r<sub>2</sub>'',0)")) --> |"u(r<sub>1</sub>,r<sub>2</sub></sub>'')     "| END@{shape: framed-circle}
+```
+
+[RemindMe! when fixed](https://github.com/orgs/community/discussions/149217)
 
 ## Results
 
-For an overall weighted winrate of `60.0044%` for the starting player.  
+Under optimal play, the **first-player** has an expected win rate of $`\mathbb{E}[f(X, 0)] \approx 60.00\%`$[^1].  
 
-Table representation of **f**.  
-Action column denotes the optimal strategy by showing which dice to keep.  
-(For the second player, **g** results are available under [results folder](https://github.com/VincentPinet/421-Solver/tree/master/results/) with the facing roll as file name)
+Lines are current combo (sorted by ranking).  
+Columns are how many reroll already used.  
+Corresponding cell will give expected win rate given the best action.  
+Actions shows which die should be kept and _ denotes a reroll.
 
-<table>
-	<tr>
-		<td rowspan="2"><b>r \ t </td>
-		<td colspan="2"><b>0</td>
-		<td colspan="2"><b>1</td>
-		<td colspan="2"><b>2</td>
-	</tr>
-	<tr>
-		<td>win%</td>
-		<td>action</td>
-		<td>win%</td>
-		<td>action</td>
-		<td>win%</td>
-		<td>action</td>
-	</tr>
-	</tr>
-		<td><b>421</td>
-		<td>98.61%</td>
-		<td>421</td>
-		<td>94.23%</td>
-		<td>421</td>
-		<td>88.59%</td>
-		<td>421</td>
-	</tr>
-	</tr>
-		<td><b>111</td>
-		<td>96.99%</td>
-		<td>111</td>
-		<td>87.94%</td>
-		<td>111</td>
-		<td>76.63%</td>
-		<td>111</td>
-	</tr>
-	</tr>
-		<td><b>611</td>
-		<td>96.06%</td>
-		<td>611</td>
-		<td>85.80%</td>
-		<td>611</td>
-		<td>73.44%</td>
-		<td>611</td>
-	</tr>
-	</tr>
-		<td><b>666</td>
-		<td>95.14%</td>
-		<td>666</td>
-		<td>83.60%</td>
-		<td>666</td>
-		<td>70.45%</td>
-		<td>666</td>
-	</tr>
-	</tr>
-		<td><b>511</td>
-		<td>94.21%</td>
-		<td>511</td>
-		<td>82.02%</td>
-		<td>511</td>
-		<td>67.98%</td>
-		<td>511</td>
-	</tr>
-	</tr>
-		<td><b>555</td>
-		<td>93.29%</td>
-		<td>555</td>
-		<td>79.42%</td>
-		<td>555</td>
-		<td>63.91%</td>
-		<td>555</td>
-	</tr>
-	</tr>
-		<td><b>411</td>
-		<td>92.36%</td>
-		<td>411</td>
-		<td>76.90%</td>
-		<td>411</td>
-		<td>60.82%</td>
-		<td>411</td>
-	</tr>
-	</tr>
-		<td><b>444</td>
-		<td>91.44%</td>
-		<td>444</td>
-		<td>73.99%</td>
-		<td>444</td>
-		<td>56.60%</td>
-		<td>444</td>
-	</tr>
-	</tr>
-		<td><b>311</td>
-		<td>90.51%</td>
-		<td>311</td>
-		<td>72.30%</td>
-		<td>311</td>
-		<td>54.82%</td>
-		<td>311</td>
-	</tr>
-	</tr>
-		<td><b>333</td>
-		<td>89.58%</td>
-		<td>333</td>
-		<td>70.84%</td>
-		<td>333</td>
-		<td>53.44%</td>
-		<td>333</td>
-	</tr>
-	</tr>
-		<td><b>211</td>
-		<td>88.66%</td>
-		<td>211</td>
-		<td>69.38%</td>
-		<td>211</td>
-		<td>52.03%</td>
-		<td>211</td>
-	</tr>
-	</tr>
-		<td><b>222</td>
-		<td>87.73%</td>
-		<td>222</td>
-		<td>67.98%</td>
-		<td>222</td>
-		<td>50.64%</td>
-		<td>222</td>
-	</tr>
-	</tr>
-		<td><b>654</td>
-		<td>86.11%</td>
-		<td>654</td>
-		<td>66.24%</td>
-		<td>654</td>
-		<td>49.38%</td>
-		<td>654</td>
-	</tr>
-	</tr>
-		<td><b>543</td>
-		<td>83.33%</td>
-		<td>543</td>
-		<td>62.54%</td>
-		<td>543</td>
-		<td>45.10%</td>
-		<td>543</td>
-	</tr>
-	</tr>
-		<td><b>432</td>
-		<td>80.56%</td>
-		<td>432</td>
-		<td>58.29%</td>
-		<td>432</td>
-		<td>40.47%</td>
-		<td>432</td>
-	</tr>
-	</tr>
-		<td><b>321</td>
-		<td>77.78%</td>
-		<td>321</td>
-		<td>53.51%</td>
-		<td>321</td>
-		<td>35.58%</td>
-		<td>321</td>
-	</tr>
-	</tr>
-		<td><b>665</td>
-		<td>75.69%</td>
-		<td>665</td>
-		<td>49.40%</td>
-		<td>665</td>
-		<td>30.90%</td>
-		<td>665</td>
-	</tr>
-	</tr>
-		<td><b>664</td>
-		<td>74.31%</td>
-		<td>664</td>
-		<td>47.22%</td>
-		<td>664</td>
-		<td>29.12%</td>
-		<td>664</td>
-	</tr>
-	</tr>
-		<td><b>663</td>
-		<td>72.92%</td>
-		<td>663</td>
-		<td>45.66%</td>
-		<td>663</td>
-		<td>27.67%</td>
-		<td>663</td>
-	</tr>
-	</tr>
-		<td><b>662</td>
-		<td>71.53%</td>
-		<td>662</td>
-		<td>44.44%</td>
-		<td>662</td>
-		<td>26.43%</td>
-		<td>662</td>
-	</tr>
-	</tr>
-		<td><b>661</td>
-		<td>70.14%</td>
-		<td>661</td>
-		<td>42.88%</td>
-		<td>661</td>
-		<td>25.01%</td>
-		<td>661</td>
-	</tr>
-	</tr>
-		<td><b>655</td>
-		<td>68.75%</td>
-		<td>655</td>
-		<td>41.38%</td>
-		<td>655</td>
-		<td>23.97%</td>
-		<td>655</td>
-	</tr>
-	</tr>
-		<td><b>653</td>
-		<td>66.67%</td>
-		<td>653</td>
-		<td>38.73%</td>
-		<td>653</td>
-		<td>21.10%</td>
-		<td>653</td>
-	</tr>
-	</tr>
-		<td><b>652</td>
-		<td>63.89%</td>
-		<td>652</td>
-		<td>35.03%</td>
-		<td>652</td>
-		<td>17.68%</td>
-		<td>652</td>
-	</tr>
-	</tr>
-		<td><b>651</td>
-		<td>61.11%</td>
-		<td>651</td>
-		<td>31.75%</td>
-		<td>651</td>
-		<td>15.21%</td>
-		<td>651</td>
-	</tr>
-	</tr>
-		<td><b>644</td>
-		<td>59.03%</td>
-		<td>644</td>
-		<td>29.75%</td>
-		<td>644</td>
-		<td>14.00%</td>
-		<td>644</td>
-	</tr>
-	</tr>
-		<td><b>643</td>
-		<td>56.94%</td>
-		<td>643</td>
-		<td>28.01%</td>
-		<td>643</td>
-		<td>12.74%</td>
-		<td>643</td>
-	</tr>
-	</tr>
-		<td><b>642</td>
-		<td>54.17%</td>
-		<td>642</td>
-		<td>25.04%</td>
-		<td>642</td>
-		<td>10.66%</td>
-		<td>642</td>
-	</tr>
-	</tr>
-		<td><b>641</td>
-		<td>51.39%</td>
-		<td>641</td>
-		<td>29.15%</td>
-		<td>1</td>
-		<td> 8.79%</td>
-		<td>641</td>
-	</tr>
-	</tr>
-		<td><b>633</td>
-		<td>49.31%</td>
-		<td>633</td>
-		<td>21.77%</td>
-		<td>6</td>
-		<td> 7.91%</td>
-		<td>633</td>
-	</tr>
-	</tr>
-		<td><b>632</td>
-		<td>47.22%</td>
-		<td>632</td>
-		<td>21.77%</td>
-		<td>6</td>
-		<td> 7.43%</td>
-		<td>632</td>
-	</tr>
-	</tr>
-		<td><b>631</td>
-		<td>49.81%</td>
-		<td>1</td>
-		<td>29.15%</td>
-		<td>1</td>
-		<td> 6.48%</td>
-		<td>631</td>
-	</tr>
-	</tr>
-		<td><b>622</td>
-		<td>42.36%</td>
-		<td>622</td>
-		<td>21.77%</td>
-		<td>6</td>
-		<td> 5.85%</td>
-		<td>622</td>
-	</tr>
-	</tr>
-		<td><b>621</td>
-		<td>51.35%</td>
-		<td>21</td>
-		<td>30.33%</td>
-		<td>21</td>
-		<td> 5.38%</td>
-		<td>621</td>
-	</tr>
-	</tr>
-		<td><b>554</td>
-		<td>38.80%</td>
-		<td>4</td>
-		<td>19.69%</td>
-		<td>4</td>
-		<td> 4.97%</td>
-		<td>554</td>
-	</tr>
-	</tr>
-		<td><b>553</td>
-		<td>38.54%</td>
-		<td></td>
-		<td>19.31%</td>
-		<td></td>
-		<td> 4.61%</td>
-		<td>553</td>
-	</tr>
-	</tr>
-		<td><b>552</td>
-		<td>38.54%</td>
-		<td></td>
-		<td>19.31%</td>
-		<td></td>
-		<td> 4.09%</td>
-		<td>552</td>
-	</tr>
-	</tr>
-		<td><b>551</td>
-		<td>49.81%</td>
-		<td>1</td>
-		<td>29.15%</td>
-		<td>1</td>
-		<td> 3.56%</td>
-		<td>551</td>
-	</tr>
-	</tr>
-		<td><b>544</td>
-		<td>38.80%</td>
-		<td>4</td>
-		<td>19.69%</td>
-		<td>4</td>
-		<td> 3.33%</td>
-		<td>544</td>
-	</tr>
-	</tr>
-		<td><b>542</td>
-		<td>41.50%</td>
-		<td>42</td>
-		<td>23.82%</td>
-		<td>42</td>
-		<td> 2.90%</td>
-		<td>542</td>
-	</tr>
-	</tr>
-		<td><b>541</td>
-		<td>49.81%</td>
-		<td>1</td>
-		<td>29.15%</td>
-		<td>1</td>
-		<td> 1.80%</td>
-		<td>541</td>
-	</tr>
-	</tr>
-		<td><b>533</td>
-		<td>38.54%</td>
-		<td></td>
-		<td>19.31%</td>
-		<td></td>
-		<td> 1.43%</td>
-		<td>533</td>
-	</tr>
-	</tr>
-		<td><b>532</td>
-		<td>38.54%</td>
-		<td></td>
-		<td>19.31%</td>
-		<td></td>
-		<td> 1.11%</td>
-		<td>532</td>
-	</tr>
-	</tr>
-		<td><b>531</td>
-		<td>49.81%</td>
-		<td>1</td>
-		<td>29.15%</td>
-		<td>1</td>
-		<td> 0.69%</td>
-		<td>531</td>
-	</tr>
-	</tr>
-		<td><b>522</td>
-		<td>38.54%</td>
-		<td></td>
-		<td>19.31%</td>
-		<td></td>
-		<td> 0.49%</td>
-		<td>522</td>
-	</tr>
-	</tr>
-		<td><b>521</td>
-		<td>51.35%</td>
-		<td>21</td>
-		<td>30.33%</td>
-		<td>21</td>
-		<td> 0.39%</td>
-		<td>521</td>
-	</tr>
-	</tr>
-		<td><b>443</td>
-		<td>38.80%</td>
-		<td>4</td>
-		<td>19.69%</td>
-		<td>4</td>
-		<td> 0.32%</td>
-		<td>443</td>
-	</tr>
-	</tr>
-		<td><b>442</td>
-		<td>41.50%</td>
-		<td>42</td>
-		<td>23.82%</td>
-		<td>42</td>
-		<td> 0.25%</td>
-		<td>442</td>
-	</tr>
-	</tr>
-		<td><b>441</td>
-		<td>49.81%</td>
-		<td>1</td>
-		<td>29.15%</td>
-		<td>1</td>
-		<td> 0.18%</td>
-		<td>441</td>
-	</tr>
-	</tr>
-		<td><b>433</td>
-		<td>38.80%</td>
-		<td>4</td>
-		<td>19.69%</td>
-		<td>4</td>
-		<td> 0.12%</td>
-		<td>433</td>
-	</tr>
-	</tr>
-		<td><b>431</td>
-		<td>49.81%</td>
-		<td>1</td>
-		<td>29.15%</td>
-		<td>1</td>
-		<td> 0.06%</td>
-		<td>431</td>
-	</tr>
-	</tr>
-		<td><b>422</td>
-		<td>41.50%</td>
-		<td>42</td>
-		<td>23.82%</td>
-		<td>42</td>
-		<td> 0.02%</td>
-		<td>422</td>
-	</tr>
-	</tr>
-		<td><b>332</td>
-		<td>38.54%</td>
-		<td></td>
-		<td>19.31%</td>
-		<td></td>
-		<td> 0.02%</td>
-		<td>332</td>
-	</tr>
-	</tr>
-		<td><b>331</td>
-		<td>49.81%</td>
-		<td>1</td>
-		<td>29.15%</td>
-		<td>1</td>
-		<td> 0.01%</td>
-		<td>331</td>
-	</tr>
-	</tr>
-		<td><b>322</td>
-		<td>38.54%</td>
-		<td></td>
-		<td>19.31%</td>
-		<td></td>
-		<td> 0.00%</td>
-		<td>322</td>
-	</tr>
-	</tr>
-		<td><b>221</td>
-		<td>51.35%</td>
-		<td>21</td>
-		<td>30.33%</td>
-		<td>21</td>
-		<td> 0.00%</td>
-		<td>221</td>
-	</tr>
-</table>
+| $`f(r,t)`$        | $`t=0`$                   | $`t=1`$                   | $`t=2`$                                                      |
+| :-------------: | :---------------------: | :---------------------: | :--------------------------------------------------------: |
+| $`r=421`$         | $`98.61\% \bigm\vert 421`$    | $`94.23\% \bigm\vert 421`$    | $`88.59\% \bigm\vert 421`$ [:next_track_button:](results/421.md) |
+| $`r=111`$         | $`96.99\% \bigm\vert 111`$    | $`87.94\% \bigm\vert 111`$    | $`76.63\% \bigm\vert 111`$ [:next_track_button:](results/111.md) |
+| $`r=611`$         | $`96.06\% \bigm\vert 611`$    | $`85.80\% \bigm\vert 611`$    | $`73.44\% \bigm\vert 611`$ [:next_track_button:](results/611.md) |
+| $`r=666`$         | $`95.14\% \bigm\vert 666`$    | $`83.60\% \bigm\vert 666`$    | $`70.45\% \bigm\vert 666`$ [:next_track_button:](results/666.md) |
+| $`r=511`$         | $`94.21\% \bigm\vert 511`$    | $`82.02\% \bigm\vert 511`$    | $`67.98\% \bigm\vert 511`$ [:next_track_button:](results/511.md) |
+| $`r=555`$         | $`93.29\% \bigm\vert 555`$    | $`79.42\% \bigm\vert 555`$    | $`63.91\% \bigm\vert 555`$ [:next_track_button:](results/555.md) |
+| $`r=411`$         | $`92.36\% \bigm\vert 411`$    | $`76.90\% \bigm\vert 411`$    | $`60.82\% \bigm\vert 411`$ [:next_track_button:](results/411.md) |
+| $`r=444`$         | $`91.44\% \bigm\vert 444`$    | $`73.99\% \bigm\vert 444`$    | $`56.60\% \bigm\vert 444`$ [:next_track_button:](results/444.md) |
+| $`r=311`$         | $`90.51\% \bigm\vert 311`$    | $`72.30\% \bigm\vert 311`$    | $`54.82\% \bigm\vert 311`$ [:next_track_button:](results/311.md) |
+| $`r=333`$         | $`89.58\% \bigm\vert 333`$    | $`70.84\% \bigm\vert 333`$    | $`53.44\% \bigm\vert 333`$ [:next_track_button:](results/333.md) |
+| $`r=211`$         | $`88.66\% \bigm\vert 211`$    | $`69.38\% \bigm\vert 211`$    | $`52.03\% \bigm\vert 211`$ [:next_track_button:](results/211.md) |
+| $`r=222`$         | $`87.73\% \bigm\vert 222`$    | $`67.98\% \bigm\vert 222`$    | $`50.64\% \bigm\vert 222`$ [:next_track_button:](results/222.md) |
+| $`r=654`$         | $`86.11\% \bigm\vert 654`$    | $`66.24\% \bigm\vert 654`$    | $`49.38\% \bigm\vert 654`$ [:next_track_button:](results/654.md) |
+| $`r=543`$         | $`83.33\% \bigm\vert 543`$    | $`62.54\% \bigm\vert 543`$    | $`45.10\% \bigm\vert 543`$ [:next_track_button:](results/543.md) |
+| $`r=432`$         | $`80.56\% \bigm\vert 432`$    | $`58.29\% \bigm\vert 432`$    | $`40.47\% \bigm\vert 432`$ [:next_track_button:](results/432.md) |
+| $`r=321`$         | $`77.78\% \bigm\vert 321`$    | $`53.51\% \bigm\vert 321`$    | $`35.58\% \bigm\vert 321`$ [:next_track_button:](results/321.md) |
+| $`r=665`$         | $`75.69\% \bigm\vert 665`$    | $`49.40\% \bigm\vert 665`$    | $`30.90\% \bigm\vert 665`$ [:next_track_button:](results/665.md) |
+| $`r=664`$         | $`74.31\% \bigm\vert 664`$    | $`47.22\% \bigm\vert 664`$    | $`29.12\% \bigm\vert 664`$ [:next_track_button:](results/664.md) |
+| $`r=663`$         | $`72.92\% \bigm\vert 663`$    | $`45.66\% \bigm\vert 663`$    | $`27.67\% \bigm\vert 663`$ [:next_track_button:](results/663.md) |
+| $`r=662`$         | $`71.53\% \bigm\vert 662`$    | $`44.44\% \bigm\vert 662`$    | $`26.43\% \bigm\vert 662`$ [:next_track_button:](results/662.md) |
+| $`r=661`$         | $`70.14\% \bigm\vert 661`$    | $`42.88\% \bigm\vert 661`$    | $`25.01\% \bigm\vert 661`$ [:next_track_button:](results/661.md) |
+| $`r=655`$         | $`68.75\% \bigm\vert 655`$    | $`41.38\% \bigm\vert 655`$    | $`23.97\% \bigm\vert 655`$ [:next_track_button:](results/655.md) |
+| $`r=653`$         | $`66.67\% \bigm\vert 653`$    | $`38.73\% \bigm\vert 653`$    | $`21.10\% \bigm\vert 653`$ [:next_track_button:](results/653.md) |
+| $`r=652`$         | $`63.89\% \bigm\vert 652`$    | $`35.03\% \bigm\vert 652`$    | $`17.68\% \bigm\vert 652`$ [:next_track_button:](results/652.md) |
+| $`r=651`$         | $`61.11\% \bigm\vert 651`$    | $`31.75\% \bigm\vert 651`$    | $`15.21\% \bigm\vert 651`$ [:next_track_button:](results/651.md) |
+| $`r=644`$         | $`59.03\% \bigm\vert 644`$    | $`29.75\% \bigm\vert 644`$    | $`14.00\% \bigm\vert 644`$ [:next_track_button:](results/644.md) |
+| $`r=643`$         | $`56.94\% \bigm\vert 643`$    | $`28.01\% \bigm\vert 643`$    | $`12.74\% \bigm\vert 643`$ [:next_track_button:](results/643.md) |
+| $`r=642`$         | $`54.17\% \bigm\vert 642`$    | $`25.04\% \bigm\vert 642`$    | $`10.66\% \bigm\vert 642`$ [:next_track_button:](results/642.md) |
+| $`r=641`$         | $`51.39\% \bigm\vert 641`$    | $`29.15\% \bigm\vert \_\_1`$  | $`8.79\% \bigm\vert 641`$ [:next_track_button:](results/641.md)  |
+| $`r=633`$         | $`49.31\% \bigm\vert 633`$    | $`21.77\% \bigm\vert \_\_6`$  | $`7.91\% \bigm\vert 633`$ [:next_track_button:](results/633.md)  |
+| $`r=632`$         | $`47.22\% \bigm\vert 632`$    | $`21.77\% \bigm\vert \_\_6`$  | $`7.43\% \bigm\vert 632`$ [:next_track_button:](results/632.md)  |
+| $`r=631`$         | $`49.81\% \bigm\vert \_\_1`$  | $`29.15\% \bigm\vert \_\_1`$  | $`6.48\% \bigm\vert 631`$ [:next_track_button:](results/631.md)  |
+| $`r=622`$         | $`42.36\% \bigm\vert 622`$    | $`21.77\% \bigm\vert \_\_6`$  | $`5.85\% \bigm\vert 622`$ [:next_track_button:](results/622.md)  |
+| $`r=621`$         | $`51.35\% \bigm\vert \_21`$   | $`30.33\% \bigm\vert \_21`$   | $`5.38\% \bigm\vert 621`$ [:next_track_button:](results/621.md)  |
+| $`r=554`$         | $`38.80\% \bigm\vert \_\_4`$  | $`19.69\% \bigm\vert \_\_4`$  | $`4.97\% \bigm\vert 554`$ [:next_track_button:](results/554.md)  |
+| $`r=553`$         | $`38.54\% \bigm\vert \_\_\_`$ | $`19.31\% \bigm\vert \_\_\_`$ | $`4.61\% \bigm\vert 553`$ [:next_track_button:](results/553.md)  |
+| $`r=552`$         | $`38.54\% \bigm\vert \_\_\_`$ | $`19.31\% \bigm\vert \_\_\_`$ | $`4.09\% \bigm\vert 552`$ [:next_track_button:](results/552.md)  |
+| $`r=551`$         | $`49.81\% \bigm\vert \_\_1`$  | $`29.15\% \bigm\vert \_\_1`$  | $`3.56\% \bigm\vert 551`$ [:next_track_button:](results/551.md)  |
+| $`r=544`$         | $`38.80\% \bigm\vert \_\_4`$  | $`19.69\% \bigm\vert \_\_4`$  | $`3.33\% \bigm\vert 544`$ [:next_track_button:](results/544.md)  |
+| $`r=542`$         | $`41.50\% \bigm\vert \_42`$   | $`23.82\% \bigm\vert \_42`$   | $`2.90\% \bigm\vert 542`$ [:next_track_button:](results/542.md)  |
+| $`r=541`$         | $`49.81\% \bigm\vert \_\_1`$  | $`29.15\% \bigm\vert \_\_1`$  | $`1.80\% \bigm\vert 541`$ [:next_track_button:](results/541.md)  |
+| $`r=533`$         | $`38.54\% \bigm\vert \_\_\_`$ | $`19.31\% \bigm\vert \_\_\_`$ | $`1.43\% \bigm\vert 533`$ [:next_track_button:](results/533.md)  |
+| $`r=532`$         | $`38.54\% \bigm\vert \_\_\_`$ | $`19.31\% \bigm\vert \_\_\_`$ | $`1.11\% \bigm\vert 532`$ [:next_track_button:](results/532.md)  |
+| $`r=531`$         | $`49.81\% \bigm\vert \_\_1`$  | $`29.15\% \bigm\vert \_\_1`$  | $`0.69\% \bigm\vert 531`$ [:next_track_button:](results/531.md)  |
+| $`r=522`$         | $`38.54\% \bigm\vert \_\_\_`$ | $`19.31\% \bigm\vert \_\_\_`$ | $`0.49\% \bigm\vert 522`$ [:next_track_button:](results/522.md)  |
+| $`r=521`$         | $`51.35\% \bigm\vert \_21`$   | $`30.33\% \bigm\vert \_21`$   | $`0.39\% \bigm\vert 521`$ [:next_track_button:](results/521.md)  |
+| $`r=443`$         | $`38.80\% \bigm\vert \_\_4`$  | $`19.69\% \bigm\vert \_\_4`$  | $`0.32\% \bigm\vert 443`$ [:next_track_button:](results/443.md)  |
+| $`r=442`$         | $`41.50\% \bigm\vert \_42`$   | $`23.82\% \bigm\vert \_42`$   | $`0.25\% \bigm\vert 442`$ [:next_track_button:](results/442.md)  |
+| $`r=441`$         | $`49.81\% \bigm\vert \_\_1`$  | $`29.15\% \bigm\vert \_\_1`$  | $`0.18\% \bigm\vert 441`$ [:next_track_button:](results/441.md)  |
+| $`r=433`$         | $`38.80\% \bigm\vert \_\_4`$  | $`19.69\% \bigm\vert \_\_4`$  | $`0.12\% \bigm\vert 433`$ [:next_track_button:](results/433.md)  |
+| $`r=431`$         | $`49.81\% \bigm\vert \_\_1`$  | $`29.15\% \bigm\vert \_\_1`$  | $`0.06\% \bigm\vert 431`$ [:next_track_button:](results/431.md)  |
+| $`r=422`$         | $`41.50\% \bigm\vert \_42`$   | $`23.82\% \bigm\vert \_42`$   | $`0.02\% \bigm\vert 422`$ [:next_track_button:](results/422.md)  |
+| $`r=332`$         | $`38.54\% \bigm\vert \_\_\_`$ | $`19.31\% \bigm\vert \_\_\_`$ | $`0.02\% \bigm\vert 332`$ [:next_track_button:](results/332.md)  |
+| $`r=331`$         | $`49.81\% \bigm\vert \_\_1`$  | $`29.15\% \bigm\vert \_\_1`$  | $`0.01\% \bigm\vert 331`$ [:next_track_button:](results/331.md)  |
+| $`r=322`$         | $`38.54\% \bigm\vert \_\_\_`$ | $`19.31\% \bigm\vert \_\_\_`$ | $`0.00\% \bigm\vert 322`$ [:next_track_button:](results/322.md)  |
+| $`r=221`$         | $`51.35\% \bigm\vert \_21`$   | $`30.33\% \bigm\vert \_21`$   | $`0.00\% \bigm\vert 221`$ [:next_track_button:](results/221.md)  |
+
+Click on the *next track arrow* to follow through second-player best response
+
+## Analysis
+
+By factoring a little bit we can boiled down the whole first-player strategy to this set of memorizable ordered rules:  
+
+- Continue with $`\_\_1`$ when $`r=631`$  
+- Stop on $`\geq 642`$  
+- Stop on $`\geq 622`$ when $`t=1`$  
+- Continue with $`\_21`$  
+- Continue with $`\_\_1`$  
+- Continue with $`\_42`$  
+- Continue with $`\_\_6`$  
+- Continue with $`\_\_4`$  
+- Otherwise $`\_\_\_`$ reroll everything
+
+A few other interesting observation that the strategy teaches us:
+
+- Never go for open-ended straight draw!  
+  For instance, the best candidate being $`\_54=36.86\%`$ at $`t=0`$.  
+  But it's simply dominated by $`\_\_4=38.80\%`$ and even $`\_\_\_=38.54\%`$!
+- Don't try to improve a $`211`$ (It's almost a $`10\%`$ loss)
+- $`\_21`$ is much better than $`\_42`$ (slighlty less than $`10\%`$ again) because of the good backdoors when missing the nuts.
+
+## What's next
+
+- [ ] Format and analyse second-player strategy
+- [ ] Tweak the rules until we get close to a 50/50 game with a more interesting first-player strategy ?
+
+## Acknowledgment
+
+> [!TIP]
+> Armel, if you are reading this, you got to stop letting me go first  
+> I have the above strategy nailed down and will take my $`20\%`$ edge :hand_over_mouth:  
+
+[^1]: 60.0044373496605%
